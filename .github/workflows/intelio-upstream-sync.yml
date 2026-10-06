@@ -1,0 +1,75 @@
+# Intelio fork maintenance: daily check for a new upstream Hermes release and
+# open a PR that merges the release tag into `intelio/pinned`.
+#
+# Policy (see inteliodev/alans-way-agents docs/intelio-vps.md):
+#   * `intelio/pinned` is what the Intelio VPS runs; it only moves by merging an
+#     upstream release tag through a reviewed PR. Never `hermes update` on the VPS.
+#   * All Intelio customization lives in the alans-way plugin / harness, NOT here,
+#     so upstream merges stay conflict-free.
+#
+# Token: release merges often touch upstream `.github/workflows/*`, which the
+# default GITHUB_TOKEN may not push. Add a fine-grained PAT scoped to this repo
+# only (Contents RW, Pull requests RW, Workflows RW) as the secret
+# INTELIO_SYNC_TOKEN. Without it the job falls back to GITHUB_TOKEN and works
+# whenever the release does not change workflow files.
+name: intelio-upstream-sync
+
+on:
+  schedule:
+    - cron: "17 12 * * *" # Daily 12:17 UTC (07:17 CT)
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Upstream tag to propose (default: latest upstream release)"
+        required: false
+        default: ""
+      dry_run:
+        description: "Only report what would happen"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: write
+
+concurrency:
+  group: intelio-upstream-sync
+  cancel-in-progress: false
+
+jobs:
+  propose-upstream-release:
+    if: github.repository == 'inteliodev/hermes-agent'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout sync script
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: intelio/pinned
+          sparse-checkout: .github/intelio
+          persist-credentials: false
+
+      - name: Propose latest upstream release
+        env:
+          GH_TOKEN: ${{ secrets.INTELIO_SYNC_TOKEN || github.token }}
+          REPO: ${{ github.repository }}
+          UPSTREAM: NousResearch/hermes-agent
+          PINNED_BRANCH: intelio/pinned
+          INPUT_TAG: ${{ inputs.tag }}
+          DRY_RUN: ${{ inputs.dry_run && '1' || '0' }}
+        run: bash .github/intelio/upstream-sync.sh
+
+      - name: Keep upstream workflows disabled in the fork
+        # Upstream ships many CI/release workflows that are meaningless (and
+        # secret-less) here. Only intelio-* workflows stay enabled.
+        if: ${{ !inputs.dry_run }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          gh api "repos/$REPO/actions/workflows" --paginate \
+            --jq '.workflows[] | select(.state=="active") | select(.path | test("/intelio-") | not) | .id' |
+          while read -r id; do
+            gh api -X PUT "repos/$REPO/actions/workflows/$id/disable" && echo "disabled workflow $id"
+          done
