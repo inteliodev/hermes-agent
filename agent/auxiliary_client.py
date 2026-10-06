@@ -5402,11 +5402,9 @@ def _resolve_registry_branch(req: _ResolveRequest) -> _ResolveResult:
     elif auth_type == "aws_sdk":
         client, final_model = _build_bedrock_client(provider, req.model, raw_codex=req.raw_codex)
     elif auth_type in {"oauth_device_code", "oauth_external"}:
-        # nous / openai-codex / xai-oauth already returned from their explicit branches.
-        _log_once_debug(_LOGGED_UNSUPPORTED_OAUTH_KEYS, provider,
-                        "resolve_provider_client: OAuth provider %s not "
-                        "directly supported, try 'auto'", provider)
-        return None, None
+        # nous / openai-codex / xai-oauth returned from their explicit branches; this is a plugin.
+        from agent.auxiliary_plugin_oauth import resolve_plugin_oauth_client
+        return resolve_plugin_oauth_client(req)
     else:
         # The first occurrence surfaces a real schema-drift bug; per-call retries stay silent.
         _log_once_debug(_LOGGED_UNHANDLED_AUTHTYPE_KEYS, (auth_type, provider),
