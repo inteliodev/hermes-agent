@@ -16,7 +16,7 @@ name: intelio-upstream-sync
 
 on:
   schedule:
-    - cron: "17 14 * * 1" # Mondays 14:17 UTC (09:17 CT)
+    - cron: "17 12 * * *" # Daily 12:17 UTC (07:17 CT)
   workflow_dispatch:
     inputs:
       tag:
