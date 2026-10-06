@@ -1,4 +1,4 @@
-# Intelio fork maintenance: weekly check for a new upstream Hermes release and
+# Intelio fork maintenance: daily check for a new upstream Hermes release and
 # open a PR that merges the release tag into `intelio/pinned`.
 #
 # Policy (see inteliodev/alans-way-agents docs/intelio-vps.md):

@@ -54,7 +54,7 @@ else
 fi
 
 body="$(cat <<MD
-Automated weekly upstream sync.
+Automated daily upstream sync.
 
 - Upstream release: **${release_name}** (\`${tag}\`)
 - Release commit: \`${tag_sha}\`
