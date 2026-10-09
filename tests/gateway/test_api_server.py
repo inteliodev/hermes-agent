@@ -1000,6 +1000,23 @@ class TestSkillsEndpoint:
                     assert set(entry.keys()) >= {"name", "description", "category"}
 
 
+    @pytest.mark.asyncio
+    async def test_skills_calls_real_signature(self, adapter):
+        """The handler's kwargs must match _find_all_skills (autospec catches drift)."""
+        import tools.skills_tool as skills_tool
+        with patch.object(
+            skills_tool, "_find_all_skills", autospec=True,
+            return_value=[{"name": "github", "description": "d", "category": "github"}],
+        ) as find_all:
+            app = _create_app(adapter)
+            async with TestClient(TestServer(app)) as cli:
+                resp = await cli.get("/v1/skills")
+                assert resp.status == 200
+                data = await resp.json()
+                assert [s["name"] for s in data["data"]] == ["github"]
+        find_all.assert_called_once_with(skip_disabled=False)
+
+
 class TestToolsetsEndpoint:
     @pytest.mark.asyncio
     async def test_toolsets_returns_resolved_tools(self, adapter):
