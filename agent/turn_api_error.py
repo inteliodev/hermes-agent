@@ -423,4 +423,11 @@ def settle_unrecovered_error(
         # Leave the retry loop — the caller rebuilds this iteration from the correction
         # instead of re-firing the stale request.
         return _verdict("break")
+    # The shortest reset can belong to a different account than the last one
+    # attempted. Re-select only after the wait; never retry a still-benched key.
+    pool = getattr(agent, "_credential_pool", None)
+    if is_rate_limited and getattr(agent, "provider", None) == "anthropic" and pool is not None:
+        entry = pool.select(model=_model)
+        if entry is not None:
+            agent._swap_credential(entry)
     return _verdict("fallthrough")
