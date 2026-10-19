@@ -100,12 +100,26 @@ class ClaudeImmediateFailover(unittest.TestCase):
         agent._buffer_diagnostic_status = lambda *args: None
         agent._emit_diagnostic_wait = lambda *args: None
         agent._client_log_context = lambda: 'offline test'
-        with patch('agent.retry_utils.provider_retry_after_seconds', return_value=600):
+        with patch('agent.retry_utils.provider_retry_after_seconds', return_value=600), patch('time.time', return_value=reset-120):
             wait = compute_error_backoff(agent, Exception('offline'), retry_count=1,
                 max_retries=3, is_rate_limited=True, is_zai_coding_overload=False,
                 base_url=agent.base_url, model=agent.model)
-        self.assertGreater(wait, 118)
-        self.assertLessEqual(wait, 120)
+        self.assertEqual(wait, 120)
+
+    def test_notice_persists_only_safe_metadata_in_profile(self):
+        import tempfile, os, pathlib, json
+        with tempfile.TemporaryDirectory() as home, patch.dict(os.environ, {'HERMES_HOME': home}):
+            agent = self.make_agent()
+            agent.session_id = 'api_offline_notice'
+            recover_with_credential_pool(agent, status_code=429, has_retried_429=False,
+                error_context={'reset_at': time.time()+600, 'message': 'do not persist provider errors'})
+            target = pathlib.Path(home) / 'sessions/provider-status/api_offline_notice.json'
+            persisted = json.loads(target.read_text())
+            self.assertEqual(persisted['next_account'], 'claude-2')
+            self.assertNotIn('offline-key', target.read_text())
+            self.assertNotIn('do not persist', target.read_text())
+            self.assertEqual(agent.model, 'claude-sonnet-5-5')
+            self.assertEqual(agent.provider, 'anthropic')
 
     def test_duplicate_token_never_retried_as_another_account(self):
         agent = self.make_agent()
