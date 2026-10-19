@@ -1472,6 +1472,15 @@ def compute_error_backoff(
         wait_time, _backoff_policy = adaptive_rate_limit_backoff(
             retry_count, base_url=str(base_url), model=model, error=api_error, default_wait=wait_time,
         )
+    # Once every Claude account is benched, wait for the earliest pool reset,
+    # not the Retry-After of the last account we happened to try.
+    pool = getattr(agent, "_credential_pool", None)
+    if is_rate_limited and getattr(agent, "provider", None) == "anthropic" and pool is not None:
+        if not pool.has_available(model=model):
+            import time
+            retry_at = pool.next_available_at(model=model)
+            if retry_at is not None:
+                wait_time = max(0.0, retry_at - time.time())
     _reset = reset_hint(api_error) if _adaptive else ""
     _free_busy = is_rate_limited and on_free_model(agent, base_url)
     _wait_reason = ("The free model is busy" if _free_busy

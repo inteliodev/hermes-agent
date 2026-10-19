@@ -998,9 +998,51 @@ def _recover_rate_limit(pool, *, has_retried_429, error_context, api_key_hint, c
         usage_limit_reached = any(t in context_reason for t in _USAGE_LIMIT_REASON_TOKENS) or any(
             t in context_message for t in _USAGE_LIMIT_MESSAGE_TOKENS
         )
-    if not has_retried_429 and not usage_limit_reached:
+    # A Claude account's Retry-After belongs to that account, not the entire
+    # pool. Bench it before any sleep so a healthy account can continue now.
+    if not has_retried_429 and not usage_limit_reached and pool.provider != "anthropic":
         return False, True
     return (True, False) if rotate_and_swap(429, "rate limit") else (False, True)
+
+
+def _notify_claude_account(agent, pool, failed_id, next_entry):
+    """Safe typed progress only; never send credentials or provider error bodies."""
+    import re
+    import time
+    from agent.credential_pool import STATUS_DEAD, _exhausted_until
+    from agent.credential_pool_model_cooldowns import model_cooldown_until
+    entries = pool.entries()
+    model = getattr(agent, "model", None)
+    now = time.time()
+    distinct = {}
+    for entry in entries:
+        key = entry.runtime_api_key
+        if key:
+            distinct.setdefault(key, entry)
+    usable = [e for e in distinct.values() if e.last_status != STATUS_DEAD
+              and (_exhausted_until(e) or 0) <= now
+              and model_cooldown_until(e, model) is None]
+    def label(entry):
+        raw = str(getattr(entry, "label", "") or "")
+        # Labels are user controlled: token-looking or long values must not escape.
+        return raw if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9 ._-]{0,30}", raw) and not raw.startswith(("sk-", "pk-")) else "configured account"
+    failed = next((e for e in entries if e.id == failed_id), None)
+    retry_at = pool.next_available_at(model=model) if next_entry is None else None
+    data = {"provider": "anthropic", "reason": "rate_limit", "account": label(failed),
+            "next_account": label(next_entry) if next_entry else None,
+            "remaining_usable": len(usable), "total_accounts": len(distinct),
+            "retry_at": retry_at, "exhausted": next_entry is None}
+    if next_entry:
+        text = f"Claude account {label(failed)} rate-limited. Switched to {label(next_entry)}; continuing ({len(usable)} usable)."
+    else:
+        wait = f"retry in {max(1, int((retry_at or now) - now + 0.999))}s / change model" if retry_at else "sign in again / change model"
+        text = f"All {len(distinct)} Claude accounts limited; {wait}."
+    callback = getattr(agent, "tool_progress_callback", None)
+    if callback:
+        try:
+            callback("provider.account", "_provider_account", text, data)
+        except Exception:
+            _ra().logger.debug("Claude account notice delivery failed", exc_info=True)
 
 
 def recover_with_credential_pool(
@@ -1064,6 +1106,8 @@ def recover_with_credential_pool(
             kwargs["model"] = model
         next_entry = pool.mark_exhausted_and_rotate(**kwargs)
         if next_entry is None:
+            if current_provider == "anthropic" and effective_reason == FailoverReason.rate_limit:
+                _notify_claude_account(agent, pool, credential_id, None)
             return False
         if not credential_pool_entry_serves_endpoint(next_entry, getattr(agent, "base_url", None)):
             # Mixed same-provider pool (#68237): the entry serves another endpoint and _swap_credential
@@ -1078,6 +1122,8 @@ def recover_with_credential_pool(
             rotate_status, label, getattr(next_entry, "id", "?"),
         )
         swapped = agent._swap_credential(next_entry) is not False
+        if swapped and current_provider == "anthropic" and effective_reason == FailoverReason.rate_limit:
+            _notify_claude_account(agent, pool, credential_id, next_entry)
         benched = next((e for e in pool.entries() if e.id == credential_id), None) if credential_id else None
         if (
             swapped

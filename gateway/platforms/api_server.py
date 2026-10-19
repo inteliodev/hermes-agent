@@ -3643,7 +3643,10 @@ class APIServerAdapter(OpenAICompatRoutesMixin, BasePlatformAdapter):
                 events.enqueue("assistant.delta", {"message_id": message_id, "delta": delta})
 
         def _tool_progress(event_type: str, tool_name: str = None, preview: str = None, args=None, **kwargs) -> None:
-            if event_type == "reasoning.available":
+            if event_type == "provider.account":
+                events.enqueue("tool.progress", {"message_id": message_id,
+                    "tool_name": "_provider_account", "delta": preview or "", "account_status": args})
+            elif event_type == "reasoning.available":
                 events.enqueue("tool.progress", {"message_id": message_id, "tool_name": tool_name or "_thinking", "delta": preview or ""})
             elif event_type in {"tool.started", "tool.completed", "tool.failed"}:
                 event_name = (
