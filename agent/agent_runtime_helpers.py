@@ -1037,6 +1037,23 @@ def _notify_claude_account(agent, pool, failed_id, next_entry):
     else:
         wait = f"retry in {max(1, int((retry_at or now) - now + 0.999))}s / change model" if retry_at else "sign in again / change model"
         text = f"All {len(distinct)} Claude accounts limited; {wait}."
+    # Persist only allowlisted metadata beside this profile's sessions, so a
+    # direct desktop stream and a phone opened later see the same notice.
+    try:
+        import json
+        import os
+        from hermes_constants import get_hermes_home
+        session_id = getattr(agent, "session_id", None)
+        if isinstance(session_id, str) and re.fullmatch(r"[A-Za-z0-9_-]{1,100}", session_id):
+            folder = get_hermes_home() / "sessions" / "provider-status"
+            folder.mkdir(parents=True, exist_ok=True, mode=0o700)
+            target = folder / f"{session_id}.json"
+            temporary = folder / f"{session_id}.{os.getpid()}.tmp"
+            with open(temporary, "w", encoding="utf-8", opener=lambda p, flags: os.open(p, flags, 0o600)) as handle:
+                json.dump({**data, "at": now * 1000}, handle)
+            os.replace(temporary, target)
+    except Exception:
+        _ra().logger.debug("Claude account notice persistence failed", exc_info=True)
     callback = getattr(agent, "tool_progress_callback", None)
     if callback:
         try:
