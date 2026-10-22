@@ -1,6 +1,6 @@
 ---
 title: "Intelio fork settings"
-description: "Client scope, Langfuse traces, and Claude task routing on the intelio fork"
+description: "Client scope, knowledge packs, routines, and Claude task routing on the intelio fork"
 sidebar_position: 3
 ---
 
@@ -18,14 +18,43 @@ An empty `intelio.client` leaves the scope block out of the prompt.
 the active profile is named `jarvis`.
 
 Enable the `intelio-scope` plugin for the profile. After compaction the
-plugin re-injects the client block, the scope rules, and the Jarvis
-read-only rule.
+plugin re-injects the client block, the scope rules, the Jarvis
+read-only rule, and that client's knowledge pack.
+
+`intelio.knowledge` defaults to true. With a known `intelio.client`, the
+scope block appends that client's versioned pack (decisions, SOPs,
+templates, contacts, policies) from `intelio/knowledge/<client>/`. The same
+text is re-injected after compaction. Set `intelio.knowledge` to false to
+leave the pack out. A profile overlay is used only when
+`$HERMES_HOME/knowledge/<client>/pack.json` already exists. The eval grader
+treats each pack's desk code and token as ground truth, and treats another
+client's token or desk code in an answer as a leak.
+
+`intelio.coordinator` is false by default. `intelio.owner` defaults to
+Hayden. Enable the `intelio-coordinator` plugin to add the front-door
+prompt. It routes one task to one client specialist and hands the result
+back. A task that names two clients is refused, and no pack is loaded until
+one client is named.
+
+`intelio.routines_enabled` is false by default. Enable the
+`intelio-routines` plugin for weekday morning digests and event drafts
+(email, transcript, bank charge, lease upload). Schedules use the cron
+parser. Drafts wait for approval and never auto-send.
+
+`intelio.improve` is false by default. Enable the `intelio-improve` plugin
+so a message that starts with `correction:` proposes a skill or memory
+update. The proposal is not applied and nothing is sent.
 
 ```yaml
 intelio:
   client: ""
   scope_rules: ""
   jarvis_readonly: false
+  knowledge: true
+  coordinator: false
+  owner: Hayden
+  routines_enabled: false
+  improve: false
 ```
 
 ## Langfuse

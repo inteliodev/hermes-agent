@@ -1,0 +1,8 @@
+name: intelio-routines
+version: 1.0.0
+description: >-
+  Scheduled routines and event triggers for the intelio fork. Drafts wait for
+  approval and never auto-send. Off unless intelio.routines_enabled is true.
+author: intelio
+provides_hooks:
+  - pre_tool_call

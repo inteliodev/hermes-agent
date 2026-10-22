@@ -44,7 +44,24 @@ def test_post_compaction_reinjects_once(scope):
     first = scope._on_pre_llm_call(session_id="sess")
     second = scope._on_pre_llm_call(session_id="sess")
     assert first["context"].startswith("Active client profile: HHP.")
+    assert "PACKTOKEN_HHP" in first["context"]
+    assert "PACKTOKEN_PRC" not in first["context"]
+    assert "2753" not in first["context"]
     assert second is None
+
+
+def test_knowledge_false_omits_the_pack(scope, monkeypatch):
+    monkeypatch.setattr(scope, "load_intelio_config", lambda: {
+        "client": "HHP", "knowledge": False,
+    })
+    text = scope.render_block()
+    assert text.startswith("Active client profile: HHP.")
+    assert "PACKTOKEN_HHP" not in text
+    for off in ("0", "false", "no", "off"):
+        monkeypatch.setattr(scope, "load_intelio_config", lambda off=off: {
+            "client": "HHP", "knowledge": off,
+        })
+        assert "PACKTOKEN_HHP" not in scope.render_block()
 
 
 def test_jarvis_blocks_mutating_tools_and_allows_reads(scope, monkeypatch):
@@ -86,4 +103,6 @@ def test_register_wires_the_section(scope):
     scope.register(ctx)
     assert set(ctx.hooks) == {"post_compaction", "pre_llm_call", "pre_tool_call"}
     assert ctx.section[0] == "intelio.client_scope"
+    assert ctx.section[2]["max_chars"] == 6000
     assert "HHP" in ctx.section[1]({})
+    assert "PACKTOKEN_HHP" in ctx.section[1]({})

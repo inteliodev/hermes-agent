@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "client": "Alignment",
+  "token": "PACKTOKEN_Alignment",
+  "facts": {
+    "desk": "3064",
+    "token": "PACKTOKEN_Alignment",
+    "decision": "Hayden approves every outbound message before it is sent.",
+    "sop": "Log the request against desk 3064 before acting.",
+    "template": "Use the Alignment status note. Do not send it.",
+    "contact": "Desk lead for Alignment. No personal phone numbers are stored here.",
+    "policy": "Stay inside Alignment. Never share another client's records."
+  }
+}

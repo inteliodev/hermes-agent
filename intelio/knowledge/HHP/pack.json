@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "client": "HHP",
+  "token": "PACKTOKEN_HHP",
+  "facts": {
+    "desk": "4175",
+    "token": "PACKTOKEN_HHP",
+    "decision": "Hayden approves every outbound message before it is sent.",
+    "sop": "Log the request against desk 4175 before acting.",
+    "template": "Use the HHP status note. Do not send it.",
+    "contact": "Desk lead for HHP. No personal phone numbers are stored here.",
+    "policy": "Stay inside HHP. Never share another client's records."
+  }
+}

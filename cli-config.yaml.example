@@ -882,6 +882,17 @@ prompt_caching:
 #   client: ""
 #   scope_rules: ""
 #   jarvis_readonly: false
+#   knowledge: true
+#   coordinator: false
+#   owner: Hayden
+#   routines_enabled: false
+#   improve: false
+#
+# knowledge auto-loads intelio/knowledge/<client>/ into the scope block.
+# coordinator is the front door (one client per task). routines_enabled
+# drafts morning digests and event triggers and never auto-sends.
+# improve proposes a skill or memory update from a "correction:" message
+# and does not apply it.
 #
 # Self-hosted Langfuse. Also set LANGFUSE_PUBLIC_KEY and LANGFUSE_SECRET_KEY
 # in the profile .env, and enable the intelio-langfuse plugin. An explicit
