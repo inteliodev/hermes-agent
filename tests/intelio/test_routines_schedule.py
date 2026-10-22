@@ -1,8 +1,10 @@
 """Profile cron jobs for intelio routines: opt-in, isolation, and local delivery."""
 
 import json
+import threading
 from datetime import datetime
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
@@ -12,6 +14,7 @@ from intelio.routines_schedule import (
     load_digest_sources,
     run_routine_job,
     source_allowed,
+    sync_gateway_profile,
     sync_profile,
 )
 
@@ -25,6 +28,7 @@ FORBIDDEN = (
     "UNREAD_LEASE_SECRET",
     "ONLY_IN_OTHER_HOME",
     "blank owner account",
+    "Hayden Ashley private thread",
 )
 
 
@@ -44,13 +48,19 @@ def _routine_ids(home: Path) -> set[str]:
     return {item["id"] for item in store.routines}
 
 
-def _write_config(home: Path, *, client: str, digests: bool, routines: bool = False) -> None:
+def _write_config(
+    home: Path, *, client: str, digests: bool, routines: bool = False, plugin: bool = False,
+) -> None:
+    plugins = ""
+    if plugin:
+        plugins = "plugins:\n  enabled:\n    - intelio-routines\n"
     home.mkdir(parents=True, exist_ok=True)
     (home / "config.yaml").write_text(
-        "intelio:\n"
-        f"  client: {client}\n"
-        f"  digests: {'true' if digests else 'false'}\n"
-        f"  routines_enabled: {'true' if routines else 'false'}\n",
+        plugins
+        + "intelio:\n"
+        + f"  client: {client}\n"
+        + f"  digests: {'true' if digests else 'false'}\n"
+        + f"  routines_enabled: {'true' if routines else 'false'}\n",
         encoding="utf-8",
     )
 
@@ -70,6 +80,10 @@ def _sources() -> list[dict]:
         {
             "client": "PRC", "category": "messages", "owner": "",
             "text": "blank owner account 42",
+        },
+        {
+            "client": "PRC", "category": "Messages", "owner": "Hayden Ashley",
+            "text": "Hayden Ashley private thread",
         },
         {
             "client": "PRC", "category": "operations", "owner": "PRC",
@@ -341,3 +355,85 @@ def test_the_ticker_runs_a_local_digest_and_opt_out_stops_it(scheduled_home, mon
     assert scheduler.tick(verbose=False, sync=True, headless=True) == 0
     assert len(RoutineStore(home / "intelio" / "routines.json").load_runs()) == 1
     assert sent == []
+
+
+def test_gateway_sync_requires_the_plugin_and_stays_on_one_client(tmp_path):
+    home = tmp_path / "hhp"
+    _write_config(home, client="HHP", digests=True, plugin=False)
+    assert sync_gateway_profile(home)["installed"] == []
+    assert not (home / "cron" / "jobs.json").exists()
+    assert not (home / "intelio" / "routines.json").exists()
+
+    _write_config(home, client="HHP", digests=True, plugin=True)
+    result = sync_gateway_profile(home)
+    assert result["installed"] == ["intelio-routine-morning-digest-HHP"]
+    assert _routine_ids(home) == {"morning-digest-HHP"}
+    assert _jobs(home)[0]["deliver"] == "local"
+    assert _jobs(home)[0]["no_agent"] is True
+
+    (home / "config.yaml").write_text(
+        "plugins:\n  enabled:\n    - intelio-routines\n  disabled:\n    - intelio-routines\n"
+        "intelio:\n  client: HHP\n  digests: true\n",
+        encoding="utf-8",
+    )
+    paused = sync_gateway_profile(home)
+    assert paused["installed"] == []
+    assert _jobs(home)[0]["state"] == "paused"
+    assert "morning-digest-PRC" not in _routine_ids(home)
+
+
+def test_host_ticker_installs_a_secondary_digest_before_the_first_scan(tmp_path, monkeypatch):
+    from cron.scheduler_provider import InProcessCronScheduler
+
+    launch = tmp_path / "default"
+    secondary = tmp_path / "hhp"
+    gated = tmp_path / "prc"
+    _write_config(launch, client="intelio", digests=False, plugin=False)
+    _write_config(secondary, client="HHP", digests=True, plugin=True)
+    _write_config(gated, client="PRC", digests=True, plugin=True)
+    monkeypatch.setenv("HERMES_HOME", str(launch))
+    scanned: list[str] = []
+    stop = threading.Event()
+
+    def _tick(*_args, **_kwargs):
+        from hermes_constants import get_hermes_home
+
+        scanned.append(str(get_hermes_home()))
+        if len(scanned) >= 2:
+            stop.set()
+        return 0
+
+    prov = InProcessCronScheduler()
+    with patch("cron.scheduler.tick", side_effect=_tick), \
+         patch("cron.jobs.record_ticker_heartbeat", lambda **_kw: None), \
+         patch("cron.jobs.record_ticker_error", lambda *_a, **_kw: None), \
+         patch("cron.jobs.clear_ticker_error", lambda *_a, **_kw: None):
+        thread = threading.Thread(
+            target=prov.start,
+            args=(stop,),
+            kwargs={
+                "interval": 60,
+                "profile_homes": [("default", launch), ("hhp", secondary), ("prc", gated)],
+                "profile_gate": lambda name, _home: name != "prc",
+            },
+            daemon=True,
+        )
+        thread.start()
+        assert stop.wait(timeout=10)
+        thread.join(timeout=5)
+
+    assert not thread.is_alive()
+    seen = {str(Path(item)) for item in scanned}
+    assert str(secondary) in seen or str(secondary.resolve()) in seen
+    assert str(gated) not in seen and str(gated.resolve()) not in seen
+    assert _names(secondary) == ["intelio-routine-morning-digest-HHP"]
+    job = _jobs(secondary)[0]
+    assert job["deliver"] == "local"
+    assert job["failure_deliver"] == "local"
+    assert job["no_agent"] is True
+    assert not job.get("origin")
+    assert not (launch / "cron" / "jobs.json").exists()
+    assert not (gated / "cron" / "jobs.json").exists()
+    stored = (secondary / "cron" / "jobs.json").read_text(encoding="utf-8")
+    assert "PRC" not in stored
+    assert "morning-digest-PRC" not in _routine_ids(secondary)

@@ -2,7 +2,6 @@
 
 import pytest
 
-from intelio.clients import CLIENTS
 from intelio.routines import (
     DIGEST_SCHEDULE,
     WEEKLY_SCHEDULE,
@@ -16,20 +15,21 @@ from intelio.routines import (
 NOW = 1_700_000_000.0
 
 
-def test_morning_digests_and_the_weekly_report_use_cron_schedules(tmp_path):
+def test_one_client_digest_does_not_write_the_other_clients(tmp_path):
     store = RoutineStore(tmp_path / "routines.json")
-    created = store.ensure_morning_digests(NOW)
-    assert {item["client"] for item in created} == set(CLIENTS)
-    assert store.ensure_morning_digests(NOW) == []
-    for item in created:
-        assert item["id"] == f"morning-digest-{item['client']}"
-        assert item["action"] == "draft_digest"
-        assert item["auto_send"] is False
-        assert item["approval_required"] is True
-        spec = parse_cron(item["trigger"]["schedule"])
-        assert spec["kind"] == "cron"
-        assert item["trigger"]["schedule"] == DIGEST_SCHEDULE
-        assert item["next_run_at"] > NOW
+    created = store.ensure_client_digest("PRC", NOW)
+    assert created["client"] == "PRC"
+    assert created["id"] == "morning-digest-PRC"
+    assert created["action"] == "draft_digest"
+    assert created["auto_send"] is False
+    assert created["approval_required"] is True
+    assert created["trigger"]["schedule"] == DIGEST_SCHEDULE
+    assert created["next_run_at"] > NOW
+    assert store.ensure_client_digest("PRC", NOW)["id"] == created["id"]
+    assert [item["client"] for item in store.routines] == ["PRC"]
+    assert not hasattr(RoutineStore, "ensure_morning_digests")
+    spec = parse_cron(created["trigger"]["schedule"])
+    assert spec["kind"] == "cron"
 
     weekly = store.ensure_weekly_report(NOW)
     assert weekly["id"] == "weekly-improvement"
@@ -111,7 +111,8 @@ def test_send_actions_are_rejected(tmp_path):
 
 def test_a_successful_run_waits_for_approval_and_does_not_send(tmp_path):
     store = RoutineStore(tmp_path / "routines.json")
-    store.ensure_morning_digests(NOW)
+    store.ensure_client_digest("HHP", NOW)
+    store.ensure_client_digest("PRC", NOW)
     seen = {}
 
     def runner(routine):

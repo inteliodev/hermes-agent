@@ -24,8 +24,15 @@ def shipped_root() -> Path:
 
 
 def overlay_root() -> Optional[Path]:
-    """Profile overlay, only when the process already set ``HERMES_HOME``."""
-    raw = os.environ.get("HERMES_HOME", "").strip()
+    """Profile overlay for the active home, never the platform default.
+
+    A routed turn sets the context-local home and leaves ``HERMES_HOME`` on
+    the launch profile. The override wins so a secondary profile cannot read
+    the launch profile's pack. With neither set, there is no overlay.
+    """
+    from hermes_constants import get_hermes_home_override
+
+    raw = (get_hermes_home_override() or os.environ.get("HERMES_HOME", "")).strip()
     if not raw:
         return None
     root = Path(raw).expanduser() / "knowledge"

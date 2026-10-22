@@ -35,6 +35,23 @@ def _backoff_wait_seconds(interval: float, consecutive_failures: int) -> float:
     return min(interval * (2 **(consecutive_failures - 1)), _EMFILE_BACKOFF_MAX_SECONDS)
 
 
+def _sync_intelio_before_tick(home: Path) -> None:
+    """Install this profile's local intelio jobs before the due scan.
+
+    The host ticker visits every served profile, including a secondary whose
+    plugin has not loaded yet. An upstream tree without the intelio package
+    skips the seam. A sync failure must not skip the tick.
+    """
+    try:
+        from intelio.routines_schedule import sync_gateway_profile
+    except ImportError:
+        return
+    try:
+        sync_gateway_profile(home)
+    except Exception:
+        logger.warning("intelio profile sync failed for %s", home, exc_info=True)
+
+
 def _note_tick_failure(exc: BaseException, consecutive_failures: int) -> int:
     """On fd exhaustion: reclaim fds and bump the backoff counter; any other failure resets it —
     backoff is reserved for the EMFILE storm.
@@ -490,6 +507,7 @@ class InProcessCronScheduler(CronScheduler):
                 if can_dispatch is not None and not can_dispatch():
                     logger.debug("Cron dispatch paused while gateway drains existing work")
                 else:
+                    _sync_intelio_before_tick(get_process_hermes_home())
                     cron_tick(
                         verbose=False, adapters=adapters, loop=loop, sync=False,
                         can_dispatch=can_dispatch,
@@ -619,6 +637,7 @@ class InProcessCronScheduler(CronScheduler):
                     for _pname, home in cycle_homes:
                         try:
                             with _profile_cron_scope(home):
+                                _sync_intelio_before_tick(home)
                                 cron_tick(
                                     verbose=False, adapters=tick_adapters_for(_pname), loop=loop,
                                     sync=False, can_dispatch=can_dispatch,

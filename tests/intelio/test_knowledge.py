@@ -51,6 +51,36 @@ def test_a_pack_that_quotes_another_client_is_refused(tmp_path):
         load_pack("HHP", root=tmp_path)
 
 
+def test_overlay_follows_the_active_home_not_the_launch_env(monkeypatch, tmp_path):
+    from hermes_constants import reset_hermes_home_override, set_hermes_home_override
+
+    launch = tmp_path / "launch"
+    secondary = tmp_path / "secondary"
+    monkeypatch.setenv("HERMES_HOME", str(launch))
+    for home, decision in (
+        (launch, "Launch only decision for PRC."),
+        (secondary, "Secondary only decision for PRC."),
+    ):
+        overlay = home / "knowledge" / "PRC"
+        shutil.copytree(shipped_root() / "PRC", overlay)
+        manifest = json.loads((overlay / "pack.json").read_text(encoding="utf-8"))
+        manifest["facts"]["decision"] = decision
+        (overlay / "pack.json").write_text(json.dumps(manifest), encoding="utf-8")
+        (overlay / "decisions.md").write_text(
+            f"PRC desk 2753. PACKTOKEN_PRC\n{decision}\n", encoding="utf-8",
+        )
+
+    assert "Launch only decision" in load_pack("PRC")["text"]
+    token = set_hermes_home_override(str(secondary))
+    try:
+        packed = load_pack("PRC")
+    finally:
+        reset_hermes_home_override(token)
+    assert packed["path"] == str(secondary / "knowledge" / "PRC")
+    assert "Secondary only decision" in packed["text"]
+    assert "Launch only decision" not in packed["text"]
+
+
 def test_overlay_wins_only_when_pack_json_already_exists(monkeypatch, tmp_path):
     home = tmp_path / "home"
     monkeypatch.setenv("HERMES_HOME", str(home))

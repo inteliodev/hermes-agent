@@ -5,10 +5,11 @@ Digests and other routines stay off until the profile opts in. Each job is a
 and no origin, so the draft stays in Hermes cron output and, for a digest, in
 ``intelio/digests/<client>/``. Nothing is texted or emailed.
 
-A profile schedules only routines whose client is ``intelio.client``. Sources
-come from that home's ``intelio/digest-sources.json``. Another client's pack
-token or desk code is dropped, and so are Finance and Messages notes owned by
-Hayden or by nobody.
+A profile schedules only routines whose client is ``intelio.client``. The host
+ticker calls ``sync_gateway_profile`` for each home it is about to tick, so a
+secondary profile does not wait for a session. Sources come from that home's
+``intelio/digest-sources.json``. Another client's pack token or desk code is
+dropped, and so are Finance and Messages notes owned by Hayden or by nobody.
 """
 
 from __future__ import annotations
@@ -35,8 +36,9 @@ JOB_PREFIX = "intelio-routine-"
 PAUSE_REASON = "Intelio routines are off for this profile."
 LOCAL_DELIVER = "local"
 PRIVATE_CATEGORIES = frozenset({"finance", "messages"})
-PRIVATE_OWNER = "hayden"
+_HAYDEN_OWNER = re.compile(r"\bhayden\b")
 _ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,80}$")
+_ROUTINES_PLUGIN = "intelio-routines"
 _REPO = Path(__file__).resolve().parents[1]
 
 
@@ -46,7 +48,7 @@ def source_allowed(client: str, item: Any) -> bool:
         return False
     category = str(item.get("category") or "").strip().lower()
     owner = str(item.get("owner") or "").strip().lower()
-    if category in PRIVATE_CATEGORIES and owner in {"", PRIVATE_OWNER}:
+    if category in PRIVATE_CATEGORIES and _private_owner(owner):
         return False
     return str(item.get("client") or "").strip() == client
 
@@ -86,6 +88,26 @@ def load_digest_sources(home: Path) -> list[dict[str, Any]]:
     if not isinstance(rows, list):
         return []
     return [row for row in rows if isinstance(row, dict)]
+
+
+def sync_gateway_profile(home: Optional[Path] = None) -> dict[str, Any]:
+    """Install or pause one home the host ticker is about to visit.
+
+    Called inside that profile's cron scope, before the due scan. The profile's
+    ``config.yaml`` is read directly so a secondary home is not confused with
+    the launch profile and so a profile that never opted in is not created.
+    A profile that has not enabled ``intelio-routines`` is paused and never
+    given a new row. Opted-in profiles schedule only their own ``intelio.client``.
+    """
+    target = Path(home) if home is not None else get_hermes_home()
+    raw = _read_profile_config(target)
+    plugins = raw.get("plugins") if isinstance(raw.get("plugins"), dict) else {}
+    section = raw.get("intelio") if isinstance(raw.get("intelio"), dict) else {}
+    if not _plugin_listed(plugins):
+        return sync_profile(
+            target, cfg={"client": "", "digests": False, "routines_enabled": False},
+        )
+    return sync_profile(target, cfg=section)
 
 
 def sync_profile(
@@ -344,6 +366,34 @@ def _intelio_section() -> dict[str, Any]:
         logger.debug("intelio config unreadable", exc_info=True)
         return {}
     return section if isinstance(section, dict) else {}
+
+
+def _private_owner(owner: str) -> bool:
+    """Blank, Hayden, or a name that includes Hayden. Other owners stay visible."""
+    return not owner or _HAYDEN_OWNER.search(owner) is not None
+
+
+def _read_profile_config(home: Path) -> dict[str, Any]:
+    """That home's ``config.yaml`` only. Missing or unreadable is an empty mapping."""
+    path = Path(home) / "config.yaml"
+    if not path.is_file():
+        return {}
+    try:
+        from hermes_cli.config import read_user_config_raw
+        data = read_user_config_raw(path)
+    except Exception:
+        logger.debug("profile config unreadable for intelio sync", exc_info=True)
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _plugin_listed(plugins: dict) -> bool:
+    """True when this profile enabled the routines plugin and did not disable it."""
+    disabled = plugins.get("disabled")
+    enabled = plugins.get("enabled")
+    if isinstance(disabled, list) and _ROUTINES_PLUGIN in disabled:
+        return False
+    return isinstance(enabled, list) and _ROUTINES_PLUGIN in enabled
 
 
 def _profile_client(section: Any) -> str:

@@ -6,9 +6,8 @@ it. Every successful action is a draft with ``auto_send`` false. Approving a
 draft records the decision and still does not send.
 
 Profile scheduling lives in ``intelio.routines_schedule``. It installs one
-client's jobs into that profile's cron store and does not fan out to every
-client. ``ensure_morning_digests`` remains a store helper for a directory the
-caller already chose.
+client's jobs into that profile's cron store. There is no helper that writes
+every client into a caller-chosen directory.
 """
 
 from __future__ import annotations
@@ -191,28 +190,6 @@ class RoutineStore:
             action="draft_digest",
             now=now,
         )
-
-    def ensure_morning_digests(self, now: float) -> list[dict[str, Any]]:
-        """One weekday morning draft per client. Existing rows are left alone.
-
-        This writes every client into the directory the caller passed. The
-        profile scheduler does not call it; a profile digest uses
-        ``ensure_client_digest`` so one home never gains another client's row.
-        """
-        created: list[dict[str, Any]] = []
-        for client in CLIENTS:
-            routine_id = f"morning-digest-{client}"
-            if self.get(routine_id) is not None:
-                continue
-            created.append(self.add(
-                routine_id=routine_id,
-                name=f"{client} morning digest",
-                client=client,
-                trigger={"kind": "schedule", "schedule": DIGEST_SCHEDULE},
-                action="draft_digest",
-                now=now,
-            ))
-        return created
 
     def ensure_weekly_report(self, now: float) -> dict[str, Any]:
         """Owner-level Monday draft. Not scoped to one client's pack."""

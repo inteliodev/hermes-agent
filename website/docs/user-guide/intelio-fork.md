@@ -39,10 +39,12 @@ one client is named.
 `intelio.routines_enabled` is false by default. `intelio.digests` is false
 by default and is the per-profile opt-in for the weekday morning digest.
 Enable the `intelio-routines` plugin, set `intelio.client`, then set the
-flag on that profile. The plugin installs the jobs into that profile's
-cron store, so the Hermes ticker runs them. `intelio.digests` adds one
-weekday 08:00 draft for that client only. `intelio.routines_enabled`
-schedules the other routines already stored for that same client.
+flag on that profile. The host gateway's cron ticker installs that profile's
+jobs on boot, including a secondary profile, before the first due scan. A
+session is not required. `intelio.digests` adds one weekday 08:00 draft for
+that client only. `intelio.routines_enabled` schedules the other routines
+already stored for that same client. A profile that has not enabled the
+plugin gets no new job.
 
 Delivery is `local`. The draft is saved in the profile's cron output and
 copied to `$HERMES_HOME/intelio/digests/<client>/`. Nothing is texted or

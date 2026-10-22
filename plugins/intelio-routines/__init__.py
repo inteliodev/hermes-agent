@@ -1,6 +1,8 @@
 """Block sends while a routine draft is executing, and keep this profile's jobs on the ticker.
 
-The cron jobs live in the active profile's cron store. ``intelio.digests`` and
+The cron jobs live in the active profile's cron store. The host ticker also
+installs them for each served profile that enabled this plugin, so a secondary
+profile does not wait for a session. ``intelio.digests`` and
 ``intelio.routines_enabled`` are each off until that profile sets them. Drafts
 stay local.
 """
