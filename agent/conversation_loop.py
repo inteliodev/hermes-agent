@@ -26,6 +26,7 @@ from agent.prompt_builder import RUNTIME_ENVIRONMENT_END, RUNTIME_ENVIRONMENT_HE
 from agent.prompt_caching import (
     build_prompt_cache_plan,
     effective_cache_ttl,
+    skills_prefix_from_agent,
     strip_anthropic_cache_control,
     strip_anthropic_tool_cache_control,
 )
@@ -1261,6 +1262,7 @@ def _redecorate_prompt_cache_for_provider(
             tool_part_markers=envelope_tool_part_cache_markers_supported(
                 getattr(agent, "provider", ""), getattr(agent, "base_url", "")
             ),
+            skills_prefix=skills_prefix_from_agent(agent),
         )
         messages, planned_tools = plan.messages, plan.tools
 

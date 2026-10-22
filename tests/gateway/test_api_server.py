@@ -1003,7 +1003,7 @@ class TestSkillsEndpoint:
     @pytest.mark.asyncio
     async def test_skills_calls_real_signature(self, adapter):
         """The handler's kwargs must match find_all_skills (autospec catches drift)."""
-        import tools.skills_tool as skills_tool
+        from tools import skills_tool
         with patch.object(
             skills_tool, "find_all_skills", autospec=True,
             return_value=[{"name": "github", "description": "d", "category": "github"}],

@@ -1,0 +1,10 @@
+name: intelio-langfuse
+version: 1.0.0
+description: >-
+  Optional self-hosted Langfuse traces for Hermes turns. Off unless
+  langfuse.enabled is true and LANGFUSE_PUBLIC_KEY plus LANGFUSE_SECRET_KEY
+  are set. Message bodies for finance, email, and texts are redacted by default.
+author: intelio
+provides_hooks:
+  - post_api_request
+  - post_llm_call

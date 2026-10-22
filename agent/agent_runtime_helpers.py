@@ -1001,7 +1001,10 @@ def _recover_rate_limit(pool, *, has_retried_429, error_context, api_key_hint, c
         )
     # A Claude account's Retry-After belongs to that account, not the entire
     # pool. Bench it before any sleep so a healthy account can continue now.
-    if not has_retried_429 and not usage_limit_reached and pool.provider != "anthropic":
+    # Pools without a provider (test doubles, unscoped pools) keep the
+    # retry-once-then-rotate path.
+    pool_provider = getattr(pool, "provider", None)
+    if not has_retried_429 and not usage_limit_reached and pool_provider != "anthropic":
         return False, True
     return (True, False) if rotate_and_swap(429, "rate limit") else (False, True)
 
@@ -1140,6 +1143,8 @@ def recover_with_credential_pool(
             rotate_status, label, getattr(next_entry, "id", "?"),
         )
         swapped = agent._swap_credential(next_entry) is not False
+        from agent.claude_account_sticky import note_swap
+        note_swap(agent, swapped=swapped, provider=current_provider)
         if swapped and current_provider == "anthropic" and effective_reason == FailoverReason.rate_limit:
             _notify_claude_account(agent, pool, credential_id, next_entry)
         benched = next((e for e in pool.entries() if e.id == credential_id), None) if credential_id else None
@@ -1495,7 +1500,8 @@ def restore_primary_runtime(agent) -> bool:
         # Reset the index even without activation: a failed _try_activate_fallback() can strand
         # _fallback_index past the chain end and silently block future fallbacks (#20465).
         agent._fallback_index = 0
-        _revert_credential_rotation(agent)
+        from agent.claude_account_sticky import hold_then_remember
+        hold_then_remember(agent, _revert_credential_rotation)
         return False
     rt = agent._primary_runtime
     primary_provider = str((rt or {}).get("provider") or "").strip().lower()

@@ -15,7 +15,9 @@ from typing import Any
 
 from agent.message_sanitization import _sanitize_messages_surrogates
 from agent.usage_anchor import anchored_context_tokens
-from agent.prompt_caching import build_prompt_cache_plan, effective_cache_ttl
+from agent.prompt_caching import (
+    build_prompt_cache_plan, effective_cache_ttl, skills_prefix_from_agent,
+)
 from agent.turn_context import build_api_messages
 
 logger = logging.getLogger("agent.conversation_loop")
@@ -226,6 +228,7 @@ def assemble_api_request(
             tool_part_markers=envelope_tool_part_cache_markers_supported(
                 getattr(agent, "provider", ""), getattr(agent, "base_url", "")
             ),
+            skills_prefix=skills_prefix_from_agent(agent),
         )
         api_messages = _initial_cache_plan.messages
         tools_for_api = _initial_cache_plan.tools

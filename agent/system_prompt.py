@@ -733,6 +733,54 @@ def _join_tier(parts: list[Optional[str]]) -> str:
     return "\n\n".join(p.strip() for p in parts if p and p.strip())
 
 
+def prefix_through_skills(stable: str, context: str, skills_prompt: str) -> Optional[str]:
+    """Bytes of stable + context + the skills index, or None when skills are absent.
+
+    The volatile tail (memory, profile, timestamp) starts immediately after this
+    prefix, so a cache breakpoint here stays warm when only that tail changes.
+    """
+    skills = (skills_prompt or "").strip()
+    if not skills:
+        return None
+    head = "\n\n".join(p for p in (stable, context) if p)
+    return f"{head}\n\n{skills}" if head else skills
+
+
+def _remember_skills_prefix(agent: Any, parts: dict[str, str], full: str) -> None:
+    """Stash the skills breakpoint when ``full`` still has a volatile tail after it."""
+    prefix = prefix_through_skills(
+        parts.get("stable") or "", parts.get("context") or "",
+        getattr(agent, "_last_skills_prompt_block", "") or "",
+    )
+    static = parts.get("stable") or ""
+    if prefix and full.startswith(prefix) and full[len(prefix):].strip() and len(prefix) > len(static):
+        agent._cached_system_prompt_through_skills = prefix
+    else:
+        agent._cached_system_prompt_through_skills = None
+
+
+def _fill_skills_prefix_if_missing(agent: Any, stored: str, static: str) -> None:
+    """Set the skills breakpoint from a prompt whose static prefix is already known.
+
+    ``build_system_prompt`` sets both together. A restore that already has the static
+    prefix (failover redecoration) must still learn where the skills index ends, without
+    rebuilding the prompt, when that boundary was not stashed yet.
+    """
+    if getattr(agent, "_cached_system_prompt_through_skills", None):
+        return
+    skills = (getattr(agent, "_last_skills_prompt_block", "") or "").strip()
+    if not skills or not static or not stored.startswith(static):
+        return
+    marker = f"\n\n{skills}"
+    idx = stored.find(marker, len(static) - 1 if stored.startswith(static) else 0)
+    if idx < 0:
+        return
+    end = idx + len(marker)
+    prefix = stored[:end]
+    if len(prefix) > len(static) and stored[end:].strip():
+        agent._cached_system_prompt_through_skills = prefix
+
+
 def build_system_prompt_parts(agent: Any, system_message: Optional[str] = None) -> dict[str, str]:
     """Assemble the system prompt as three ordered cache tiers: ``stable`` (identity,
     guidance and the coding brief), ``context`` (caller ``system_message``, project
@@ -796,6 +844,9 @@ def build_system_prompt_parts(agent: Any, system_message: Optional[str] = None) 
         # Embedder hints are prose too; reserve the delimiter for the renderer.
         environment_hints = environment_hints.replace(_pb.RUNTIME_ENVIRONMENT_HEADING, "> " + _pb.RUNTIME_ENVIRONMENT_HEADING)
         volatile_parts.append(f"{_pb.RUNTIME_ENVIRONMENT_HEADING}\n\n{environment_hints}\n\n{_pb.RUNTIME_ENVIRONMENT_END}")
+    # Request-local cache split reads this; it is not a fourth tier in the returned dict
+    # (callers join ``.values()`` and a new key would land in the prompt).
+    agent._last_skills_prompt_block = skills_prompt
     return {"stable": _join_tier(stable_parts), "context": _join_tier(context_parts), "volatile": _join_tier(volatile_parts)}
 
 
@@ -808,7 +859,9 @@ def build_system_prompt(agent: Any, system_message: Optional[str] = None) -> str
     # Surface context-file truncation warnings in chat, not only in logs.
     for warning in drain_truncation_warnings():
         agent._emit_diagnostic_status(warning)
-    return "\n\n".join(p for p in (parts["stable"], parts["context"], parts["volatile"]) if p)
+    full = "\n\n".join(p for p in (parts["stable"], parts["context"], parts["volatile"]) if p)
+    _remember_skills_prefix(agent, parts, full)
+    return full
 
 
 def invalidate_system_prompt(agent: Any) -> None:
@@ -825,6 +878,7 @@ def invalidate_system_prompt(agent: Any) -> None:
     """
     agent._cached_system_prompt = None
     agent._cached_system_prompt_static = None
+    agent._cached_system_prompt_through_skills = None
     if hasattr(agent, "_plugin_system_prompt_sections_snapshot"):
         agent._plugin_system_prompt_sections_previous = agent._plugin_system_prompt_sections_snapshot
         del agent._plugin_system_prompt_sections_snapshot
@@ -848,16 +902,21 @@ def reconstruct_static_prefix(agent: Any, system_message: Optional[str] = None, 
         or (isinstance(existing, str) and existing and stored.startswith(existing))
         or getattr(agent, "_static_rebuild_failed_for", None) == stored
     ):
+        if isinstance(stored, str) and isinstance(existing, str) and existing and stored.startswith(existing):
+            _fill_skills_prefix_if_missing(agent, stored, existing)
         return
     try:
-        static = build_system_prompt_parts(agent, system_message=system_message)["stable"]
+        parts = build_system_prompt_parts(agent, system_message=system_message)
+        static = parts["stable"]
         if static and stored.startswith(static):
             agent._cached_system_prompt_static = static
             agent._static_rebuild_failed_for = None
+            _remember_skills_prefix(agent, parts, stored)
             return
     except Exception:
         logger.debug("static system-prefix reconstruction failed on %s", log_label, exc_info=True)
     agent._cached_system_prompt_static = None
+    agent._cached_system_prompt_through_skills = None
     agent._static_rebuild_failed_for = stored
 
 
@@ -877,5 +936,6 @@ __all__ = [
     "format_tools_for_system_message",
     "invalidate_system_prompt",
     "platform_hint",
+    "prefix_through_skills",
     "restore_plugin_prompt_sections",
 ]

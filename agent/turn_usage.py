@@ -215,6 +215,15 @@ def record_response_usage(
         prompt_tokens, completion_tokens, total_tokens,
         api_duration, _cache_pct, _ident,
     )
+    # Always-on counts. The line above omits write= when the write is zero, and a
+    # forensics parser keys off that. This second line uses different field names
+    # so a zero write is still visible without changing the first line's contract.
+    logger.info(
+        "API call #%d cache tokens: cache_read_tokens=%d cache_write_tokens=%d",
+        agent.session_api_calls,
+        int(canonical_usage.cache_read_tokens or 0),
+        int(canonical_usage.cache_write_tokens or 0),
+    )
     # nous.anthropic_wire=auto: the session's wire is decided once, from this first response.
     if agent.session_api_calls == 1 and (agent.provider or "") == "nous":
         with suppress(Exception):

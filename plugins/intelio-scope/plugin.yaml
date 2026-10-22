@@ -1,0 +1,11 @@
+name: intelio-scope
+version: 1.0.0
+description: >-
+  Re-inject the active Intelio client profile, scope rules, and the Jarvis
+  read-only rule after context compaction. Off until enabled and intelio.client
+  is one of intelio, PRC, Alignment, HHP, ARLP.
+author: intelio
+provides_hooks:
+  - post_compaction
+  - pre_llm_call
+  - pre_tool_call

@@ -871,6 +871,40 @@ prompt_caching:
   cache_ttl: "5m" # use "1h" for long sessions with pauses between turns
 
 # =============================================================================
+# Intelio fork (off until set)
+# =============================================================================
+# Client scope is empty until intelio.client is one of:
+# intelio, PRC, Alignment, HHP, ARLP. Enable the intelio-scope plugin to
+# re-inject that block after compaction. jarvis_readonly also applies when
+# the active profile is named jarvis.
+#
+# intelio:
+#   client: ""
+#   scope_rules: ""
+#   jarvis_readonly: false
+#
+# Self-hosted Langfuse. Also set LANGFUSE_PUBLIC_KEY and LANGFUSE_SECRET_KEY
+# in the profile .env, and enable the intelio-langfuse plugin. An explicit
+# empty redact_categories list keeps message text.
+#
+# langfuse:
+#   enabled: false
+#   host: "http://127.0.0.1:3000"
+#   redact_categories:
+#     - finance
+#     - email
+#     - texts
+#
+# Small Claude model for classification and summarization, using the
+# existing Anthropic accounts. The session model stays the reasoning model.
+# large_model is documentation only.
+#
+# claude_task_routing:
+#   enabled: false
+#   small_model: ""
+#   large_model: ""
+
+# =============================================================================
 # Auxiliary Models (Advanced — Experimental)
 # =============================================================================
 # Hermes uses lightweight "auxiliary" models for side tasks: image analysis,

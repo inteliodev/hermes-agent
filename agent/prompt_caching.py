@@ -178,15 +178,34 @@ def effective_cache_ttl(ttl: str | None, *, model: str = "", provider: str = "")
 def _apply_system_cache_markers(
     message: dict, cache_marker: dict, static_system_prefix: str | None, *,
     native_anthropic: bool, mark_suffix: bool = True, fallback_to_whole: bool = True,
+    skills_prefix: str | None = None,
 ) -> int:
-    """Mark the static system prefix (and optionally the full prompt); returns markers applied.
+    """Mark the static system prefix (and optionally skills, then the full prompt).
 
-    The stored system prompt stays one string, split only in the request. ``mark_suffix=False``
-    is the tool-cache-plan layout (suffix budget spent on the tools array); ``fallback_to_whole=
-    False`` marks nothing when the split is impossible. When the prompt IS the prefix the whole
-    message is one block — never an empty text block (400).
+    The stored system prompt stays one string, split only in the request. A ``skills_prefix``
+    longer than the static prefix, with a non-blank tail after it, becomes three parts:
+    static (marked), the span through the skills index (marked), and the volatile tail
+    (unmarked). ``mark_suffix=False`` is the tool-cache-plan layout (the volatile budget is
+    spent on the tools array). ``fallback_to_whole=False`` marks nothing when the split is
+    impossible. When the prompt IS the prefix the whole message is one block — never an
+    empty text block (400).
     """
     content = message.get("content")
+    if (
+        isinstance(skills_prefix, str) and skills_prefix
+        and isinstance(static_system_prefix, str) and static_system_prefix
+        and isinstance(content, str)
+        and skills_prefix.startswith(static_system_prefix)
+        and len(skills_prefix) > len(static_system_prefix)
+        and content.startswith(skills_prefix)
+        and content[len(skills_prefix):].strip()
+    ):
+        message["content"] = [
+            _text_part(static_system_prefix, cache_marker),
+            _text_part(skills_prefix[len(static_system_prefix):], cache_marker),
+            _text_part(content[len(skills_prefix):]),
+        ]
+        return 2
     if isinstance(static_system_prefix, str) and static_system_prefix and isinstance(content, str) and content.startswith(static_system_prefix):
         suffix = content[len(static_system_prefix):]
         if suffix.strip():
@@ -239,7 +258,8 @@ def strip_anthropic_cache_control(api_messages: list[dict[str, Any]]) -> list[di
         # An UNMARKED split (outside the marker window) only the registry tells from a genuine
         # two-part user message.
         skill_split = first_part_marked or (user_pair and find_stable_prefix(joined) == content[0]["text"])
-        if len(content) == 1 or (role == "system" and len(content) == 2) or skill_split:
+        # Two-part system split, or the three-part stable / skills / volatile split.
+        if len(content) == 1 or (role == "system" and len(content) in (2, 3)) or skill_split:
             msg["content"] = joined
     return api_messages
 
@@ -310,10 +330,17 @@ def _completed_transaction_endpoint_indexes(messages: list[dict[str, Any]], *, n
     return endpoints
 
 
+def skills_prefix_from_agent(agent: Any) -> str | None:
+    """The stashed stable+skills breakpoint, or None when this turn has no volatile tail."""
+    prefix = getattr(agent, "_cached_system_prompt_through_skills", None)
+    return prefix if isinstance(prefix, str) and prefix else None
+
+
 def build_prompt_cache_plan(
     api_messages: list[dict[str, Any]], tools: list[dict[str, Any]] | None, *,
     cache_ttl: str = "5m", native_anthropic: bool = False, static_system_prefix: str | None = None,
     direct_native_tool_cache: bool = False, tool_part_markers: bool = True,
+    skills_prefix: str | None = None,
 ) -> PromptCachePlan:
     """Build copy-on-write cache sections for one resolved request destination
     (``tool_part_markers=False`` keeps markers off role:tool parts on LiteLLM-style routes)."""
@@ -322,19 +349,25 @@ def build_prompt_cache_plan(
         # apply_anthropic_cache_control re-canonicalises prior decoration itself.
         planned_messages = apply_anthropic_cache_control(
             list(api_messages or []), cache_ttl=cache_ttl, native_anthropic=native_anthropic,
-            static_system_prefix=static_system_prefix, tool_part_markers=tool_part_markers)
+            static_system_prefix=static_system_prefix, tool_part_markers=tool_part_markers,
+            skills_prefix=skills_prefix)
         return PromptCachePlan(messages=planned_messages, tools=planned_tools)
 
     messages = _strip_prior_decoration(list(api_messages or []))
     marker = _build_marker(cache_ttl)
+    system_markers = 0
     if messages and isinstance(messages[0], dict) and messages[0].get("role") == "system":
-        # Tool-cache layout: only the static prefix carries a system-side marker; the
-        # volatile suffix's budget is spent on the tools array.
+        # Tool-cache layout: static prefix and, when present, the skills span. The
+        # volatile tail stays unmarked; its budget is spent on the tools array.
         messages[0] = copy.deepcopy(messages[0])
-        _apply_system_cache_markers(messages[0], marker, static_system_prefix,
-                                    native_anthropic=True, mark_suffix=False, fallback_to_whole=False)
+        system_markers = _apply_system_cache_markers(
+            messages[0], marker, static_system_prefix, native_anthropic=True,
+            mark_suffix=False, fallback_to_whole=False, skills_prefix=skills_prefix)
     planned_tools[-1]["cache_control"] = dict(marker)
-    for endpoint in _completed_transaction_endpoint_indexes(messages, native_anthropic=True)[-2:]:
+    # Anthropic allows 4 breakpoints. A skills marker spends one, so one transaction
+    # endpoint remains (the no-skills layout keeps the last two).
+    txn_slots = 1 if system_markers >= 2 else 2
+    for endpoint in _completed_transaction_endpoint_indexes(messages, native_anthropic=True)[-txn_slots:]:
         messages[endpoint] = copy.deepcopy(messages[endpoint])
         _apply_cache_marker(messages[endpoint], marker, native_anthropic=True)
     _split_unmarked_scaffolds(messages)
@@ -345,6 +378,7 @@ def build_prompt_cache_plan(
 def apply_anthropic_cache_control(
     api_messages: list[dict[str, Any]], cache_ttl: str = "5m", native_anthropic: bool = False,
     static_system_prefix: str | None = None, tool_part_markers: bool = True,
+    skills_prefix: str | None = None,
 ) -> list[dict[str, Any]]:
     """Apply Anthropic cache-control markers to API messages.
 
@@ -364,8 +398,9 @@ def apply_anthropic_cache_control(
     breakpoints_used = 0
     if messages[0].get("role") == "system":
         messages[0] = copy.deepcopy(messages[0])
-        breakpoints_used = _apply_system_cache_markers(messages[0], marker, static_system_prefix,
-                                                       native_anthropic=native_anthropic)
+        breakpoints_used = _apply_system_cache_markers(
+            messages[0], marker, static_system_prefix, native_anthropic=native_anthropic,
+            skills_prefix=skills_prefix)
 
     non_sys = [i for i, m in enumerate(messages) if m.get("role") != "system"
                and _can_carry_marker(m, native_anthropic=native_anthropic, tool_part_markers=tool_part_markers)]

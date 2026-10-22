@@ -427,7 +427,6 @@ def settle_unrecovered_error(
     # attempted. Re-select only after the wait; never retry a still-benched key.
     pool = getattr(agent, "_credential_pool", None)
     if is_rate_limited and getattr(agent, "provider", None) == "anthropic" and pool is not None:
-        entry = pool.select(model=_model)
-        if entry is not None:
-            agent._swap_credential(entry)
+        from agent.claude_account_sticky import reselect_after_backoff
+        reselect_after_backoff(agent, pool, _model)
     return _verdict("fallthrough")

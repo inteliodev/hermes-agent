@@ -715,6 +715,29 @@ DEFAULT_CONFIG = {
     # oneshot, webhook, kanban, api, tool, batch); other non-falsy values are ignored; falsy (false, null, "off",
     # "disabled", "no", "none") disables caching.
     "prompt_caching": {"cache_ttl": "5m"},
+    # Intelio fork. Empty client disables the scope plugin's prompt section.
+    # Known clients: intelio, PRC, Alignment, HHP, ARLP. jarvis_readonly (or a
+    # profile named jarvis) blocks mutating tools. Runtime data paths are unchanged.
+    "intelio": {
+        "client": "",
+        "scope_rules": "",
+        "jarvis_readonly": False,
+    },
+    # Self-hosted Langfuse. Off until enabled AND LANGFUSE_PUBLIC_KEY /
+    # LANGFUSE_SECRET_KEY are set in the profile .env. Host stays on localhost.
+    "langfuse": {
+        "enabled": False,
+        "host": "http://127.0.0.1:3000",
+        "redact_categories": ["finance", "email", "texts"],
+    },
+    # Auxiliary classification/summarization on a small Claude model already in
+    # the account pool. Off by default. The session model stays the reasoning model.
+    # large_model is documentation for operators; the router does not switch it.
+    "claude_task_routing": {
+        "enabled": False,
+        "small_model": "",
+        "large_model": "",
+    },
     # OpenRouter settings. response_cache: X-OpenRouter-Cache header — identical requests return
     # cached responses at zero billing; independent of Anthropic prompt caching. response_cache_ttl:
     # seconds (1-86400), only used when response_cache is on. min_coding_score (0.0-1.0):

@@ -35,6 +35,7 @@ const sidebars: SidebarsConfig = {
         'user-guide/windows-wsl-quickstart',
         'user-guide/switching-to-source',
         'user-guide/configuration',
+        'user-guide/intelio-fork',
         'user-guide/which-file-does-what',
         'user-guide/managed-scope',
         'user-guide/configuring-models',

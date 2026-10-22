@@ -74,10 +74,25 @@ def _static_prompt_instructions(messages: list[dict[str, Any]]) -> str:
         return str(content or "")
 
 
+def _profile_session_cache_key(scope_id: str) -> str:
+    """``pck_<sha256[:24]>`` of (active profile, logical session). Stable while both are.
+
+    Official OpenAI prompt caches are routed by this key. Hashing the profile name
+    keeps the raw home path off the wire. Empty scope is not a key: one-shot calls
+    must not share a bucket.
+    """
+    from hermes_cli.profiles import get_active_profile_name
+
+    profile = get_active_profile_name()
+    digest = hashlib.sha256(f"{profile}\x00{scope_id}".encode()).hexdigest()[:24]
+    return "pck_" + digest
+
+
 def _add_prompt_cache_key(
     api_kwargs: dict[str, Any], *, messages: list[dict[str, Any]],
     tools: list[dict[str, Any]] | None, supports_prompt_cache_key: bool,
     session_id: str | None = None, cache_scope_id: str | None = None,
+    base_url: Any = None,
 ) -> None:
     """Add a content-addressed ``prompt_cache_key`` only for a capable endpoint.
 
@@ -109,9 +124,14 @@ def _add_prompt_cache_key(
         return
     if not supports_prompt_cache_key:
         return
-    cache_key = _content_cache_key(
-        _static_prompt_instructions(messages), tools, _cache_scope_from_session_id(cache_scope_id or session_id),
-    )
+    scope = _cache_scope_from_session_id(cache_scope_id or session_id)
+    # api.openai.com keeps one bucket per profile+session so a stable prefix stays warm
+    # across turns. Every other host keeps the content hash (instruction or tool edits
+    # must change the key; xAI and non-OpenAI profiles depend on that).
+    if _is_openai_api_base_url(base_url) and scope:
+        cache_key = _profile_session_cache_key(scope)
+    else:
+        cache_key = _content_cache_key(_static_prompt_instructions(messages), tools, scope)
     if cache_key:
         api_kwargs["prompt_cache_key"] = cache_key
 
@@ -397,10 +417,11 @@ def _base_kwargs(model: str, sanitized: list, tools: Any, params: dict, profile:
 
 
 def _finish_kwargs(api_kwargs: dict[str, Any], sanitized: list, params: dict, *, supports_prompt_cache_key: bool) -> dict[str, Any]:
-    """Tail shared by both build paths: content-addressed prompt_cache_key, then return."""
+    """Tail shared by both build paths: prompt_cache_key, then return."""
     _add_prompt_cache_key(
         api_kwargs, messages=sanitized, tools=api_kwargs.get("tools"), supports_prompt_cache_key=supports_prompt_cache_key,
         session_id=params.get("session_id"), cache_scope_id=params.get("cache_scope_id"),
+        base_url=params.get("base_url"),
     )
     return api_kwargs
 
@@ -685,7 +706,11 @@ class ChatCompletionsTransport(ProviderTransport):
             if extra_body:
                 api_kwargs["extra_body"] = extra_body
         return _finish_kwargs(
-            api_kwargs, sanitized, params, supports_prompt_cache_key=bool(getattr(profile, "supports_prompt_cache_key", False)),
+            api_kwargs, sanitized, params,
+            supports_prompt_cache_key=(
+                bool(getattr(profile, "supports_prompt_cache_key", False))
+                or _is_openai_api_base_url(params.get("base_url"))
+            ),
         )
 
     def normalize_response(self, response: Any, **kwargs) -> NormalizedResponse:

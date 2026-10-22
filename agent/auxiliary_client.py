@@ -6237,7 +6237,11 @@ def _resolve_task_provider_model(
         return cfg_provider, resolved_model, cfg_base_url, None, resolved_api_mode
     if cfg_provider and cfg_provider != "auto":
         return cfg_provider, resolved_model, cfg_base_url, cfg_api_key, resolved_api_mode
-    return "auto", resolved_model, None, None, resolved_api_mode
+    from agent.claude_task_routing import finish_auto_resolution
+    return finish_auto_resolution(
+        task, explicit_model=model, explicit_provider=provider, cfg_model=cfg_model,
+        cfg_provider=cfg_provider, resolved_model=resolved_model, resolved_api_mode=resolved_api_mode,
+    )
 
 
 _DEFAULT_AUX_TIMEOUT = 30.0
