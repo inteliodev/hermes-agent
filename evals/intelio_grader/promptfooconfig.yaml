@@ -1,0 +1,14 @@
+description: >
+  Intelio client rubric. The provider replays each seed's reference output, so
+  this run needs no API key and no paid model. Swap the provider id to grade a
+  live local model later. Bad-output coverage is grade.py --self-test.
+providers:
+  - id: file://provider.py
+    label: reference-replay
+prompts:
+  - "{{prompt}}"
+defaultTest:
+  assert:
+    - type: python
+      value: file://grade_assert.py
+tests: file://cases.json

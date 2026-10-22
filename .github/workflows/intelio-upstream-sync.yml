@@ -4,8 +4,9 @@
 # Policy (see inteliodev/alans-way-agents docs/intelio-vps.md):
 #   * `intelio/pinned` is what the Intelio VPS runs; it only moves by merging an
 #     upstream release tag through a reviewed PR. Never `hermes update` on the VPS.
-#   * All Intelio customization lives in the alans-way plugin / harness, NOT here,
-#     so upstream merges stay conflict-free.
+#   * Fork features that must survive an upstream merge live in this repo:
+#     intelio-scope, intelio-langfuse, Claude account stickiness, and the
+#     v0.22.3 upgrade notes in .github/intelio/UPGRADE_v0.22.3.md.
 #
 # Token: release merges often touch upstream `.github/workflows/*`, which the
 # default GITHUB_TOKEN may not push. Add a fine-grained PAT scoped to this repo

@@ -19,7 +19,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from agent.delegation_context import owned_kanban_task
 from agent.prompt_builder import (
-    ASYNC_HANDOFF_GUIDANCE, DEFAULT_AGENT_IDENTITY, EXECUTION_GUIDANCE_MODELS, GOOGLE_MODEL_OPERATIONAL_GUIDANCE,
+    DEFAULT_AGENT_IDENTITY, EXECUTION_GUIDANCE_MODELS, GOOGLE_MODEL_OPERATIONAL_GUIDANCE,
     HERMES_AGENT_HELP_GUIDANCE, HERMES_AGENT_HELP_GUIDANCE_NO_SKILLS, KANBAN_GUIDANCE,
     PARALLEL_TOOL_CALL_GUIDANCE, PLATFORM_HINTS, SESSION_SEARCH_GUIDANCE,
     SKILLS_GUIDANCE, STEER_CHANNEL_NOTE, TASK_COMPLETION_GUIDANCE, TELEGRAM_RICH_MESSAGES_HINT,
@@ -83,7 +83,7 @@ def _tui_embedded_pane_clarifier(hint: str) -> str:
     return hint + _TUI_EMBEDDED_PANE_CLARIFIER
 
 
-def _plugin_session_info(agent: Any) -> Dict[str, str]:
+def _plugin_session_info(agent: Any) -> dict[str, str]:
     """Return immutable-at-render-time metadata exposed to prompt sections."""
     try:
         cwd = str(resolve_context_cwd() or "")
@@ -167,7 +167,7 @@ def restore_plugin_prompt_sections(agent: Any, prompt: str) -> None:
     agent._plugin_system_prompt_sections_snapshot = _restore_plugin_prompt_sections(prompt)
 
 
-def _plugin_section_blocks(sections: tuple, position: str) -> List[str]:
+def _plugin_section_blocks(sections: tuple, position: str) -> list[str]:
     from hermes_cli.plugins import format_system_prompt_sections
     block = format_system_prompt_sections([s for s in sections if s.position == position])
     return [block] if block else []
@@ -314,7 +314,7 @@ def _skills_prompt(agent: Any) -> str:
                                          compact_categories=_compact_cats or None, skills_dir_override=_agent_skills_dir(agent))
 
 
-def _auto_load_parts(agent: Any) -> List[str]:
+def _auto_load_parts(agent: Any) -> list[str]:
     """``skills.auto_load`` blocks, resolved once per agent lifecycle (config, skill files and
     HERMES_IGNORE_RULES are read on the first build only) so the prompt stays byte-stable
     across model switches, compression and static-prefix restoration.
@@ -326,7 +326,7 @@ def _auto_load_parts(agent: Any) -> List[str]:
             name in agent.valid_tool_names for name in ("skills_list", "skill_view", "skill_manage")):
         return []
     if not getattr(agent, "_auto_load_skills_resolved", False):
-        result: Tuple[str, List[str], List[str]] = ("", [], [])
+        result: tuple[str, list[str], list[str]] = ("", [], [])
         try:
             if not is_truthy_value(os.environ.get("HERMES_IGNORE_RULES")):
                 from agent.skill_commands import build_auto_load_prompt
@@ -341,11 +341,11 @@ def _auto_load_parts(agent: Any) -> List[str]:
     return [prompt] if prompt else []
 
 
-def _bot_mode_parts(agent: Any) -> List[str]:
+def _bot_mode_parts(agent: Any) -> list[str]:
     """Bot Mode teammate protocol — only in a bot's canonical "Bot Chat" session.
     Marks the prompt timeless (the volatile date line is dropped) since a birth
     date pinned in a months-long session is misinformation."""
-    parts: List[str] = []
+    parts: list[str] = []
     try:
         from tools.bot_mode_probe import BOT_CHAT_TITLE, epoch_line, get_bot_mode_protocol_section
         _title = str(getattr(agent, "_session_title_hint", "") or "").strip()
@@ -417,6 +417,12 @@ def _default_platform_hint(platform_key: str) -> str:
         try:
             from gateway.platform_registry import platform_registry
             _entry = platform_registry.get(platform_key)
+            if _entry is None:
+                # A prompt can be built before anything ran plugin discovery (direct builders,
+                # one-shot callers); the hint lives on the plugin's entry, so discover (idempotent).
+                from hermes_cli.plugins import discover_plugins
+                discover_plugins()
+                _entry = platform_registry.get(platform_key)
             hint = (_entry and _entry.platform_hint) or ""
         except Exception:
             pass
@@ -471,7 +477,7 @@ def _telegram_rich_messages_enabled() -> bool:
         return False
 
 
-def _zone_bits(now: Any, tz: Any) -> List[str]:
+def _zone_bits(now: Any, tz: Any) -> list[str]:
     """IANA key, abbreviation (if different) and UTC offset — all constant for
     the day, so the byte-stable date line stays cacheable."""
     _iana = getattr(tz, "key", None)
@@ -513,11 +519,11 @@ def _timestamp_line(agent: Any) -> str:
     return timestamp_line + "".join(f"\n{label}: {value}" for label, value in trailer if value)
 
 
-def _memory_parts(agent: Any) -> List[str]:
+def _memory_parts(agent: Any) -> list[str]:
     """Built-in memory/USER.md blocks plus the external provider block (gated on
     the same check ``inject_memory_provider_tools`` uses, so we never advertise
     tools the toolset config gated off)."""
-    parts: List[str] = []
+    parts: list[str] = []
     if agent._memory_store:
         for enabled, kind in ((agent._memory_enabled, "memory"), (agent._user_profile_enabled, "user")):
             block = agent._memory_store.format_for_system_prompt(kind) if enabled else None
@@ -528,7 +534,7 @@ def _memory_parts(agent: Any) -> List[str]:
     # configuration has already gated off (#81014).
     if agent._memory_manager:
         try:
-            from agent.memory_manager import memory_provider_tools_exposed as _mem_exposed
+            from agent.memory_manager_tools import memory_provider_tools_exposed as _mem_exposed
         except Exception:
             _mem_exposed = None
         if _mem_exposed is None or _mem_exposed(agent):
@@ -541,7 +547,7 @@ def _memory_parts(agent: Any) -> List[str]:
     return parts
 
 
-def _identity_parts(agent: Any, ctx_len: Optional[int]) -> Tuple[List[str], bool]:
+def _identity_parts(agent: Any, ctx_len: Optional[int]) -> tuple[list[str], bool]:
     """SOUL.md (primary identity; cron keeps the persona while skipping cwd
     instructions, scoped to the agent's OWN home) or the default identity.
     Returns ``(parts, soul_loaded)``."""
@@ -550,9 +556,9 @@ def _identity_parts(agent: Any, ctx_len: Optional[int]) -> Tuple[List[str], bool
     return ([_soul_content], True) if _soul_content else ([DEFAULT_AGENT_IDENTITY], False)
 
 
-def _guidance_parts(agent: Any) -> List[str]:
+def _guidance_parts(agent: Any) -> list[str]:
     """Universal + tool-aware + model-gated guidance blocks, each gated by its config.yaml key."""
-    parts: List[str] = []
+    parts: list[str] = []
     if agent.valid_tool_names:
         parts += [
             text for flag, text in (
@@ -576,14 +582,10 @@ def _guidance_parts(agent: Any) -> List[str]:
     if _model_gate(getattr(agent, "_execution_guidance", "auto"), agent.model, EXECUTION_GUIDANCE_MODELS):
         from agent.prompt_builder import execution_guidance_text
         parts.append(execution_guidance_text(agent.valid_tool_names))
-    # delegate_task background delivery is intentionally between turns. Put this after the generic persistence
-    # blocks so their "keep working" rule cannot turn the required yield into no-op/polling activity.
-    if "delegate_task" in agent.valid_tool_names:
-        parts.append(ASYNC_HANDOFF_GUIDANCE)
     return parts
 
 
-def _alibaba_identity_part(agent: Any) -> List[str]:
+def _alibaba_identity_part(agent: Any) -> list[str]:
     """Alibaba Coding Plan always reports "glm-4.7" as the model name; inject
     the real identity so the agent can answer correctly."""
     if agent.provider != "alibaba":
@@ -661,7 +663,7 @@ def _seed_workspace_pin(agent: Any, key: str) -> None:
         agent._frozen_workspace_snapshot = (key, block)
 
 
-def _coding_parts(agent: Any) -> Tuple[List[str], List[str], List[str]]:
+def _coding_parts(agent: Any) -> tuple[list[str], list[str], list[str]]:
     """``(prefix, workspace, trailing)`` coding-posture blocks; all empty
     without tools or when probing fails (it must never block prompt build).
 
@@ -693,11 +695,11 @@ def _coding_parts(agent: Any) -> Tuple[List[str], List[str], List[str]]:
     return [], [], []
 
 
-def _post_workspace_parts(agent: Any) -> List[str]:
+def _post_workspace_parts(agent: Any) -> list[str]:
     """Blocks that follow the worktree-specific context: environment probe
     (config.yaml agent.environment_probe; one line, nothing when clean, skipped
     for remote backends), bot-mode protocol, platform hint."""
-    parts: List[str] = []
+    parts: list[str] = []
     if getattr(agent, "_environment_probe", True):
         try:
             from tools.env_probe import get_environment_probe_line
@@ -710,7 +712,7 @@ def _post_workspace_parts(agent: Any) -> List[str]:
     return parts
 
 
-def _context_files_part(agent: Any, ctx_len: Optional[int], soul_loaded: bool) -> List[str]:
+def _context_files_part(agent: Any, ctx_len: Optional[int], soul_loaded: bool) -> list[str]:
     """Project context files (AGENTS.md etc.) for the context tier. TERMINAL_CWD
     when set (gateway); None lets discovery fall back to the launch dir.  The
     install-tree fallback is only legitimate for cli/tui where the launch dir
@@ -726,12 +728,60 @@ def _context_files_part(agent: Any, ctx_len: Optional[int], soul_loaded: bool) -
         allow_install_tree_fallback=agent.platform in ("cli", "tui"), home_override=_agent_home(agent))]
 
 
-def _join_tier(parts: List[Optional[str]]) -> str:
+def _join_tier(parts: list[Optional[str]]) -> str:
     """Join non-empty parts; None/blank entries are dropped."""
     return "\n\n".join(p.strip() for p in parts if p and p.strip())
 
 
-def build_system_prompt_parts(agent: Any, system_message: Optional[str] = None) -> Dict[str, str]:
+def prefix_through_skills(stable: str, context: str, skills_prompt: str) -> Optional[str]:
+    """Bytes of stable + context + the skills index, or None when skills are absent.
+
+    The volatile tail (memory, profile, timestamp) starts immediately after this
+    prefix, so a cache breakpoint here stays warm when only that tail changes.
+    """
+    skills = (skills_prompt or "").strip()
+    if not skills:
+        return None
+    head = "\n\n".join(p for p in (stable, context) if p)
+    return f"{head}\n\n{skills}" if head else skills
+
+
+def _remember_skills_prefix(agent: Any, parts: dict[str, str], full: str) -> None:
+    """Stash the skills breakpoint when ``full`` still has a volatile tail after it."""
+    prefix = prefix_through_skills(
+        parts.get("stable") or "", parts.get("context") or "",
+        getattr(agent, "_last_skills_prompt_block", "") or "",
+    )
+    static = parts.get("stable") or ""
+    if prefix and full.startswith(prefix) and full[len(prefix):].strip() and len(prefix) > len(static):
+        agent._cached_system_prompt_through_skills = prefix
+    else:
+        agent._cached_system_prompt_through_skills = None
+
+
+def _fill_skills_prefix_if_missing(agent: Any, stored: str, static: str) -> None:
+    """Set the skills breakpoint from a prompt whose static prefix is already known.
+
+    ``build_system_prompt`` sets both together. A restore that already has the static
+    prefix (failover redecoration) must still learn where the skills index ends, without
+    rebuilding the prompt, when that boundary was not stashed yet.
+    """
+    if getattr(agent, "_cached_system_prompt_through_skills", None):
+        return
+    skills = (getattr(agent, "_last_skills_prompt_block", "") or "").strip()
+    if not skills or not static or not stored.startswith(static):
+        return
+    marker = f"\n\n{skills}"
+    idx = stored.find(marker, len(static) - 1 if stored.startswith(static) else 0)
+    if idx < 0:
+        return
+    end = idx + len(marker)
+    prefix = stored[:end]
+    if len(prefix) > len(static) and stored[end:].strip():
+        agent._cached_system_prompt_through_skills = prefix
+
+
+def build_system_prompt_parts(agent: Any, system_message: Optional[str] = None) -> dict[str, str]:
     """Assemble the system prompt as three ordered cache tiers: ``stable`` (identity,
     guidance and the coding brief), ``context`` (caller ``system_message``, project
     context files, workspace snapshot and remaining workspace guidance) and
@@ -766,7 +816,7 @@ def build_system_prompt_parts(agent: Any, system_message: Optional[str] = None) 
     stable_parts.extend(coding_prefix_parts)
     post_workspace_parts = _post_workspace_parts(agent)
     # ── Context tier (project/worktree-dependent, may change between sessions) ──
-    context_parts: List[str] = []
+    context_parts: list[str] = []
     # ephemeral_system_prompt is injected at API-call time only, never cached.
     if system_message is not None:
         context_parts.append(system_message)
@@ -780,7 +830,7 @@ def build_system_prompt_parts(agent: Any, system_message: Optional[str] = None) 
     # ── Volatile tier (most likely to differ on a rebuild; kept last so the stable prefix stays reusable) ──
     # Skills are runtime-mutable, so the index leads the volatile band: on a longest-prefix
     # backend an unchanged index stays inside the reused prefix; a changed one re-prefills from here.
-    volatile_parts: List[str] = [skills_prompt, *_memory_parts(agent)]
+    volatile_parts: list[str] = [skills_prompt, *_memory_parts(agent)]
     # Plugin sections are confined to one coarse anchor in the volatile tail so
     # a resumed process can reconstruct the stable prefix without re-running plugins.
     volatile_parts.extend(_plugin_section_blocks(_frozen_plugin_prompt_sections(agent), "after_memory"))
@@ -794,6 +844,9 @@ def build_system_prompt_parts(agent: Any, system_message: Optional[str] = None) 
         # Embedder hints are prose too; reserve the delimiter for the renderer.
         environment_hints = environment_hints.replace(_pb.RUNTIME_ENVIRONMENT_HEADING, "> " + _pb.RUNTIME_ENVIRONMENT_HEADING)
         volatile_parts.append(f"{_pb.RUNTIME_ENVIRONMENT_HEADING}\n\n{environment_hints}\n\n{_pb.RUNTIME_ENVIRONMENT_END}")
+    # Request-local cache split reads this; it is not a fourth tier in the returned dict
+    # (callers join ``.values()`` and a new key would land in the prompt).
+    agent._last_skills_prompt_block = skills_prompt
     return {"stable": _join_tier(stable_parts), "context": _join_tier(context_parts), "volatile": _join_tier(volatile_parts)}
 
 
@@ -806,7 +859,9 @@ def build_system_prompt(agent: Any, system_message: Optional[str] = None) -> str
     # Surface context-file truncation warnings in chat, not only in logs.
     for warning in drain_truncation_warnings():
         agent._emit_diagnostic_status(warning)
-    return "\n\n".join(p for p in (parts["stable"], parts["context"], parts["volatile"]) if p)
+    full = "\n\n".join(p for p in (parts["stable"], parts["context"], parts["volatile"]) if p)
+    _remember_skills_prefix(agent, parts, full)
+    return full
 
 
 def invalidate_system_prompt(agent: Any) -> None:
@@ -823,6 +878,7 @@ def invalidate_system_prompt(agent: Any) -> None:
     """
     agent._cached_system_prompt = None
     agent._cached_system_prompt_static = None
+    agent._cached_system_prompt_through_skills = None
     if hasattr(agent, "_plugin_system_prompt_sections_snapshot"):
         agent._plugin_system_prompt_sections_previous = agent._plugin_system_prompt_sections_snapshot
         del agent._plugin_system_prompt_sections_snapshot
@@ -846,16 +902,21 @@ def reconstruct_static_prefix(agent: Any, system_message: Optional[str] = None, 
         or (isinstance(existing, str) and existing and stored.startswith(existing))
         or getattr(agent, "_static_rebuild_failed_for", None) == stored
     ):
+        if isinstance(stored, str) and isinstance(existing, str) and existing and stored.startswith(existing):
+            _fill_skills_prefix_if_missing(agent, stored, existing)
         return
     try:
-        static = build_system_prompt_parts(agent, system_message=system_message)["stable"]
+        parts = build_system_prompt_parts(agent, system_message=system_message)
+        static = parts["stable"]
         if static and stored.startswith(static):
             agent._cached_system_prompt_static = static
             agent._static_rebuild_failed_for = None
+            _remember_skills_prefix(agent, parts, stored)
             return
     except Exception:
         logger.debug("static system-prefix reconstruction failed on %s", log_label, exc_info=True)
     agent._cached_system_prompt_static = None
+    agent._cached_system_prompt_through_skills = None
     agent._static_rebuild_failed_for = stored
 
 
@@ -869,5 +930,12 @@ def format_tools_for_system_message(agent: Any) -> str:
                        for t in agent.tools], ensure_ascii=False)
 
 
-__all__ = ["build_system_prompt_parts", "build_system_prompt", "invalidate_system_prompt",
-           "platform_hint", "restore_plugin_prompt_sections", "format_tools_for_system_message"]
+__all__ = [
+    "build_system_prompt",
+    "build_system_prompt_parts",
+    "format_tools_for_system_message",
+    "invalidate_system_prompt",
+    "platform_hint",
+    "prefix_through_skills",
+    "restore_plugin_prompt_sections",
+]

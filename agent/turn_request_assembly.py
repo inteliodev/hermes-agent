@@ -15,7 +15,9 @@ from typing import Any
 
 from agent.message_sanitization import _sanitize_messages_surrogates
 from agent.usage_anchor import anchored_context_tokens
-from agent.prompt_caching import build_prompt_cache_plan, effective_cache_ttl
+from agent.prompt_caching import (
+    build_prompt_cache_plan, effective_cache_ttl, skills_prefix_from_agent,
+)
 from agent.turn_context import build_api_messages
 
 logger = logging.getLogger("agent.conversation_loop")
@@ -160,8 +162,9 @@ def assemble_api_request(
     # OpenAI-style tool-result image_url parts. The per-call clone is rewritten in
     # place; persisted history is untouched.
     from agent.context_compressor import evict_stale_outbound_tool_images
+    from agent.image_eviction_policy import outbound_retired_image_ids
 
-    evict_stale_outbound_tool_images(api_messages)
+    evict_stale_outbound_tool_images(api_messages, outbound_retired_image_ids(agent))
 
     # One-time repeated-heal notice goes out via the status/warning callback, NEVER
     # appended to messages: the cached prompt prefix stays byte-identical.
@@ -225,6 +228,7 @@ def assemble_api_request(
             tool_part_markers=envelope_tool_part_cache_markers_supported(
                 getattr(agent, "provider", ""), getattr(agent, "base_url", "")
             ),
+            skills_prefix=skills_prefix_from_agent(agent),
         )
         api_messages = _initial_cache_plan.messages
         tools_for_api = _initial_cache_plan.tools
