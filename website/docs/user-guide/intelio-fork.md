@@ -36,10 +36,21 @@ prompt. It routes one task to one client specialist and hands the result
 back. A task that names two clients is refused, and no pack is loaded until
 one client is named.
 
-`intelio.routines_enabled` is false by default. Enable the
-`intelio-routines` plugin for weekday morning digests and event drafts
-(email, transcript, bank charge, lease upload). Schedules use the cron
-parser. Drafts wait for approval and never auto-send.
+`intelio.routines_enabled` is false by default. `intelio.digests` is false
+by default and is the per-profile opt-in for the weekday morning digest.
+Enable the `intelio-routines` plugin, set `intelio.client`, then set the
+flag on that profile. The plugin installs the jobs into that profile's
+cron store, so the Hermes ticker runs them. `intelio.digests` adds one
+weekday 08:00 draft for that client only. `intelio.routines_enabled`
+schedules the other routines already stored for that same client.
+
+Delivery is `local`. The draft is saved in the profile's cron output and
+copied to `$HERMES_HOME/intelio/digests/<client>/`. Nothing is texted or
+emailed, and approving a draft still does not send. A digest reads that
+profile's client pack and that profile's `intelio/digest-sources.json`.
+Another client's pack token or desk code is left out. Notes whose category
+is Finance or Messages and whose owner is Hayden, or whose owner is blank,
+are left out. A profile with no `intelio.client` gets no digest.
 
 `intelio.improve` is false by default. Enable the `intelio-improve` plugin
 so a message that starts with `correction:` proposes a skill or memory
@@ -54,6 +65,7 @@ intelio:
   coordinator: false
   owner: Hayden
   routines_enabled: false
+  digests: false
   improve: false
 ```
 

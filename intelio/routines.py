@@ -4,6 +4,11 @@ The store is a JSON file plus a JSONL run log in a directory the caller
 chooses. A schedule is accepted only when ``cron.jobs.parse_schedule`` accepts
 it. Every successful action is a draft with ``auto_send`` false. Approving a
 draft records the decision and still does not send.
+
+Profile scheduling lives in ``intelio.routines_schedule``. It installs one
+client's jobs into that profile's cron store and does not fan out to every
+client. ``ensure_morning_digests`` remains a store helper for a directory the
+caller already chose.
 """
 
 from __future__ import annotations
@@ -66,6 +71,14 @@ def next_cron_time(expr: str, now: float) -> float:
     base = datetime.fromtimestamp(now, UTC)
     nxt = croniter(expr, base).get_next(datetime)
     return float(nxt.timestamp())
+
+
+def flag_on(section: dict, key: str) -> bool:
+    """True for a real opt-in. Missing, empty, and ``false`` stay off."""
+    if not isinstance(section, dict):
+        return False
+    flag = section.get(key)
+    return flag is True or str(flag or "").strip().lower() in {"1", "true", "yes", "on"}
 
 
 def _reject_send(action: str) -> None:
@@ -158,8 +171,34 @@ class RoutineStore:
         self.save()
         return routine
 
+    def ensure_client_digest(self, client: str, now: float) -> dict[str, Any]:
+        """Weekday morning draft for one client. An existing row is left alone.
+
+        The profile scheduler calls this with that profile's ``intelio.client``
+        only. It does not create the other clients' digests.
+        """
+        if client not in CLIENTS:
+            raise ValueError(f"unknown client {client!r}")
+        routine_id = f"morning-digest-{client}"
+        existing = self.get(routine_id)
+        if existing is not None:
+            return existing
+        return self.add(
+            routine_id=routine_id,
+            name=f"{client} morning digest",
+            client=client,
+            trigger={"kind": "schedule", "schedule": DIGEST_SCHEDULE},
+            action="draft_digest",
+            now=now,
+        )
+
     def ensure_morning_digests(self, now: float) -> list[dict[str, Any]]:
-        """One weekday morning draft per client. Existing rows are left alone."""
+        """One weekday morning draft per client. Existing rows are left alone.
+
+        This writes every client into the directory the caller passed. The
+        profile scheduler does not call it; a profile digest uses
+        ``ensure_client_digest`` so one home never gains another client's row.
+        """
         created: list[dict[str, Any]] = []
         for client in CLIENTS:
             routine_id = f"morning-digest-{client}"

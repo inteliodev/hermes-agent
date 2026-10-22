@@ -719,7 +719,7 @@ DEFAULT_CONFIG = {
     "intelio": {
         "client": "", "scope_rules": "", "jarvis_readonly": False,
         "knowledge": True, "coordinator": False, "owner": "Hayden",
-        "routines_enabled": False, "improve": False,
+        "routines_enabled": False, "digests": False, "improve": False,
     },
     # Self-hosted Langfuse. Off until enabled AND LANGFUSE_PUBLIC_KEY /
     # LANGFUSE_SECRET_KEY are set in the profile .env. Host stays on localhost.

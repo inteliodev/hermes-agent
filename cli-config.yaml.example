@@ -886,11 +886,16 @@ prompt_caching:
 #   coordinator: false
 #   owner: Hayden
 #   routines_enabled: false
+#   digests: false
 #   improve: false
 #
 # knowledge auto-loads intelio/knowledge/<client>/ into the scope block.
 # coordinator is the front door (one client per task). routines_enabled
-# drafts morning digests and event triggers and never auto-sends.
+# schedules this profile's client routines on the cron ticker.
+# digests (off by default) adds that client's weekday 08:00 draft. The job
+# deliver is local: Hermes cron output and intelio/digests/<client>/, never
+# a text or an email. One profile's digest cannot include another client's
+# pack or Hayden's Finance and Messages notes.
 # improve proposes a skill or memory update from a "correction:" message
 # and does not apply it.
 #
