@@ -715,13 +715,11 @@ DEFAULT_CONFIG = {
     # oneshot, webhook, kanban, api, tool, batch); other non-falsy values are ignored; falsy (false, null, "off",
     # "disabled", "no", "none") disables caching.
     "prompt_caching": {"cache_ttl": "5m"},
-    # Intelio fork. Empty client disables the scope plugin's prompt section.
-    # Known clients: intelio, PRC, Alignment, HHP, ARLP. jarvis_readonly (or a
-    # profile named jarvis) blocks mutating tools. Runtime data paths are unchanged.
+    # Intelio fork. Clients: intelio, PRC, Alignment, HHP, ARLP.
     "intelio": {
-        "client": "",
-        "scope_rules": "",
-        "jarvis_readonly": False,
+        "client": "", "scope_rules": "", "jarvis_readonly": False,
+        "knowledge": True, "coordinator": False, "owner": "Hayden",
+        "routines_enabled": False, "digests": False, "improve": False,
     },
     # Self-hosted Langfuse. Off until enabled AND LANGFUSE_PUBLIC_KEY /
     # LANGFUSE_SECRET_KEY are set in the profile .env. Host stays on localhost.

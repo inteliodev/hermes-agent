@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "client": "intelio",
+  "token": "PACKTOKEN_intelio",
+  "facts": {
+    "desk": "1842",
+    "token": "PACKTOKEN_intelio",
+    "decision": "Hayden approves every outbound message before it is sent.",
+    "sop": "Log the request against desk 1842 before acting.",
+    "template": "Use the intelio status note. Do not send it.",
+    "contact": "Desk lead for intelio. No personal phone numbers are stored here.",
+    "policy": "Stay inside intelio. Never share another client's records."
+  }
+}

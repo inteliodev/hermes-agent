@@ -1,0 +1,12 @@
+name: intelio-routines
+version: 1.1.0
+description: >-
+  Scheduled routines for the intelio fork. Morning digests are a separate
+  opt-in (intelio.digests) and stay off until that profile turns them on.
+  Jobs are local cron drafts inside Hermes and the intelio app. They never
+  auto-text or auto-email. Off unless intelio.routines_enabled or
+  intelio.digests is true.
+author: intelio
+provides_hooks:
+  - pre_tool_call
+  - on_session_start

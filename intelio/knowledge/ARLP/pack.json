@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "client": "ARLP",
+  "token": "PACKTOKEN_ARLP",
+  "facts": {
+    "desk": "5286",
+    "token": "PACKTOKEN_ARLP",
+    "decision": "Hayden approves every outbound message before it is sent.",
+    "sop": "Log the request against desk 5286 before acting.",
+    "template": "Use the ARLP status note. Do not send it.",
+    "contact": "Desk lead for ARLP. No personal phone numbers are stored here.",
+    "policy": "Stay inside ARLP. Never share another client's records."
+  }
+}

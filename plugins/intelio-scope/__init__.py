@@ -88,7 +88,31 @@ def render_block(cfg: Optional[dict] = None) -> str:
             "send messages, schedule jobs, manage skills, or delegate work. "
             "Answer from what you can read."
         )
+    pack = _knowledge_excerpt(section, client)
+    if pack:
+        lines.append(pack)
     return "\n".join(lines)
+
+
+def _knowledge_enabled(section: dict) -> bool:
+    """Missing key auto-loads. An explicit false leaves the pack out."""
+    if "knowledge" not in section:
+        return True
+    flag = section.get("knowledge")
+    if flag is False:
+        return False
+    return str(flag).strip().lower() not in {"0", "false", "no", "off"}
+
+
+def _knowledge_excerpt(section: dict, client: str) -> str:
+    if not _knowledge_enabled(section):
+        return ""
+    try:
+        from intelio.knowledge import excerpt_for_client
+        return excerpt_for_client(client)
+    except Exception:
+        logger.debug("knowledge pack unreadable", exc_info=True)
+        return ""
 
 
 def _scope_key(session_id: str) -> tuple[str, str]:
@@ -139,6 +163,8 @@ def register(ctx) -> None:
     ctx.register_hook("post_compaction", _on_post_compaction)
     ctx.register_hook("pre_llm_call", _on_pre_llm_call)
     ctx.register_hook("pre_tool_call", _on_pre_tool_call)
+    # Scope rules are capped at 2000 characters and the pack excerpt at 1500,
+    # so the section cap has to leave room for both plus the Jarvis paragraph.
     ctx.register_system_prompt_section(
-        "intelio.client_scope", _section, position="after_memory", max_chars=4000,
+        "intelio.client_scope", _section, position="after_memory", max_chars=6000,
     )

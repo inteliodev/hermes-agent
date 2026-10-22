@@ -1,0 +1,9 @@
+name: intelio-coordinator
+version: 1.0.0
+description: >-
+  Front-door prompt for Hayden. Routes one task to one client specialist and
+  re-injects that rule after compaction. Off unless intelio.coordinator is true.
+author: intelio
+provides_hooks:
+  - post_compaction
+  - pre_llm_call

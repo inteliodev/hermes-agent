@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "client": "PRC",
+  "token": "PACKTOKEN_PRC",
+  "facts": {
+    "desk": "2753",
+    "token": "PACKTOKEN_PRC",
+    "decision": "Hayden approves every outbound message before it is sent.",
+    "sop": "Log the request against desk 2753 before acting.",
+    "template": "Use the PRC status note. Do not send it.",
+    "contact": "Desk lead for PRC. No personal phone numbers are stored here.",
+    "policy": "Stay inside PRC. Never share another client's records."
+  }
+}

@@ -1,0 +1,9 @@
+name: intelio-improve
+version: 1.0.0
+description: >-
+  When a user message starts with "correction:", propose a skill or memory
+  update for approval. The proposal is not applied. Off unless intelio.improve
+  is true.
+author: intelio
+provides_hooks:
+  - pre_llm_call
